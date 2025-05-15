@@ -1,0 +1,26 @@
+{
+  "header": [
+    "black",
+    "white"
+  ],
+  "reversed": [
+    "white",
+    "black"
+  ],
+  "focus": [
+    "light blue",
+    "dark blue"
+  ],
+  "preview": [
+    "dark magenta",
+    "light magenta"
+  ],
+  "success": [
+    "light green",
+    "dark green"
+  ],
+  "error": [
+    "dark red",
+    "light red"
+  ]
+}

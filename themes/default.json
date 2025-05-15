@@ -1,0 +1,9 @@
+{
+    "header": ["white", "dark blue"],
+    "reversed": ["standout", ""],
+    "focus": ["black", "light gray"],
+    "preview": ["light gray", "black"],
+    "success": ["light green", ""],
+    "error": ["light red", ""]
+  }
+  

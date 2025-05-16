@@ -80,7 +80,7 @@ esc / q      → Close or quit
 
 Profile Management
 
-MailTUI automatically saves connected accounts to ~/.mailtui_profile.json.
+MailTUI automatically saves connected accounts to `~/.mailtui_profile.json`.
 
 ---
 

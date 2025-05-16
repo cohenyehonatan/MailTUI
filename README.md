@@ -107,4 +107,4 @@ MailTUI is open-source under the [MPL-2.0 (Mozilla Public License Version 2.0)](
 
 Credits
 
-Built by [Your Name]. Inspired by the tools I wish existed. Contributions welcome!
+Built by Jonathan Cohen. Inspired by the tools I wish existed. Contributions welcome!

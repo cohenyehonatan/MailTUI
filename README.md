@@ -38,7 +38,7 @@
 ## Installation
 
 ```bash
-git clone https://github.com/[myname]/mailtui.git
+git clone https://github.com/cohenyehonatan/mailtui.git
 cd mailtui
 pip install -r requirements.txt
 ```

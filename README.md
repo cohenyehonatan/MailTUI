@@ -108,7 +108,7 @@ Troubleshooting
 
 License
 
-MailTUI is open-source under the [MIT License](LICENSE).
+MailTUI is open-source under the [MPL-2.0 (Mozilla Public License Version 2.0)](LICENSE).
 
 ---
 

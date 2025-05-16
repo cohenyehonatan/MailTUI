@@ -1,6 +1,6 @@
 # 📬 MailTUI — A Beautiful, Offline-Capable Terminal Email Client
 
-**MailTUI** is a privacy-first, offline-friendly terminal mail client (like Gmail or Outlook — but in your terminal). It’s 100% open-source, fully auditable, and lets you read, search, preview, and locally store your emails using keyboard-driven workflows.
+**MailTUI** is a privacy-first, offline-friendly terminal mail client (like Gmail or Outlook — but in your terminal). It's 2025, after all, and after looking for something like this myself for *months*, I've decided to make it myself. It’s 100% open-source, fully auditable, and lets you read, search, preview, and locally store your emails using keyboard-driven workflows.
 
 ---
 

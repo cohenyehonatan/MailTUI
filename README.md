@@ -100,7 +100,7 @@ Requirements
 ---
 
 Troubleshooting
-* OAuth fails with redirect error? Make sure you’re using the correct account/option when creating or using your OAuth2 credentials, and that you have entered the correct email address.
+* OAuth2 fails? Make sure you’re using the correct account/option when creating or using your OAuth2 credentials, and that you have entered the correct email address.
 * Can’t find credentials? Make sure your `client_secret.json` is placed under `./credentials/` for Gmail, else contact your IT team.
 * IMAP login failed? You probably need an app-specific password. The wizard provides provider-specific instructions.
 

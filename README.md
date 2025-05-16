@@ -80,7 +80,8 @@ f            → Show filter picker
 →            → Apply filter to search
 H            → General help
 ?            → Filter cheat sheet
-esc / q      → Close or quit```
+esc / q      → Close or quit
+```
 
 ---
 

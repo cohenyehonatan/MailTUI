@@ -47,7 +47,8 @@ _or [watch a live Asciinema demo](https://asciinema.org/a/xyz123)_
 ```bash
 git clone https://github.com/[myname]/mailtui.git
 cd mailtui
-pip install -r requirements.txt```
+pip install -r requirements.txt
+```
 
 ---
 

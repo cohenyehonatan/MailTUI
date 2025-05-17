@@ -1,11 +1,4 @@
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-import imaplib
-import os
-import pickle
 import base64
-import email
 from email import policy
 from email.parser import BytesParser
 from mail_api import get_message_preview, get_html_body, get_message_headers

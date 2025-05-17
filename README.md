@@ -4,6 +4,13 @@
 
 ---
 
+## Preview
+
+![MailTUI demo](docs/preview.gif)  
+_or [watch a live Asciinema demo](https://asciinema.org/a/xyz123)_
+
+---
+
 ## Features
 
 ### 🔒 Secure by Design

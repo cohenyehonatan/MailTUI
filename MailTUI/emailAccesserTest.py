@@ -5,25 +5,54 @@ import imaplib
 import os
 import pickle
 import base64
+import email
+from email import policy
+from email.parser import BytesParser
+from mail_api import get_message_preview, get_html_body, get_message_headers
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-CLIENT_SECRET_FILE = '/Users/jonathancohen/emailAccesser/client_secrets.json'
-TOKEN_FILE = 'token.pickle'
+def get_local_service_from_eml(filepath):
+    msg = load_eml_file(filepath)
+    return LocalGmailService(msg)
 
-def get_gmail_service():
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'rb') as token:
-            creds = pickle.load(token)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(TOKEN_FILE, 'wb') as token:
-            pickle.dump(creds, token)
-    return build('gmail', 'v1', credentials=creds)
+def load_eml_file(filepath):
+    with open(filepath, 'rb') as f:
+        msg = BytesParser(policy=policy.default).parse(f)
+    return msg
+
+class LocalGmailService:
+    def __init__(self, eml_message):
+        self._msg = eml_message
+
+    def users(self):
+        return self
+
+    def messages(self):
+        return self
+
+    def get(self, userId=None, id=None, format='full', metadataHeaders=None):
+        return self  # Chaining mimic
+
+    def execute(self):
+        # Convert email.message.Message to fake Gmail API payload
+        return self._convert_to_gmail_payload(self._msg)
+
+    def _convert_to_gmail_payload(self, msg):
+        def walk(part):
+            payload = {
+                'mimeType': part.get_content_type(),
+                'headers': [{'name': k, 'value': v} for k, v in part.items()]
+            }
+            if part.is_multipart():
+                payload['parts'] = [walk(p) for p in part.iter_parts()]
+            else:
+                payload['body'] = {
+                    'data': base64.urlsafe_b64encode(part.get_payload(decode=True)).decode('utf-8')
+                }
+            return payload
+
+        return {
+            'payload': walk(msg)
+        }
 
 def save_eml(service, message_id, filename):
     raw_msg = service.users().messages().get(userId='me', id=message_id, format='raw').execute()
@@ -34,25 +63,15 @@ def save_eml(service, message_id, filename):
         f.write(eml_bytes)
     print(f"Saved: {filename}")
 
-def search_and_download():
-    service = get_gmail_service()
-    query = input("Enter Gmail search query (e.g. from:dropbox subject:login): ")
-    
-    results = service.users().messages().list(userId='me', q=query, maxResults=5).execute()
-    messages = results.get('messages', [])
-    
-    if not messages:
-        print("No messages found.")
-        return
-    
-    for i, msg in enumerate(messages):
-        msg_data = service.users().messages().get(userId='me', id=msg['id'], format='metadata', metadataHeaders=['Subject', 'From', 'Date']).execute()
-        headers = msg_data['payload']['headers']
-        hdr = {h['name']: h['value'] for h in headers}
-        print(f"[{i}] From: {hdr.get('From')} | Subject: {hdr.get('Subject')} | Date: {hdr.get('Date')}")
-    
-    choice = int(input("Enter the number of the email to download as .eml: "))
-    selected_msg_id = messages[choice]['id']
-    save_eml(service, selected_msg_id, f"email_{selected_msg_id}.eml")
+def test_local_email_preview(filepath):
+    service = get_local_service_from_eml(filepath)
+    preview = get_message_preview(service, "dummy_id")
+    print("Preview:\n", preview)
 
-search_and_download()
+    headers = get_message_headers(service, "dummy_id")
+    print("\nHeaders:")
+    for k, v in headers.items():
+        print(f"{k}: {v}")
+
+    html_body = get_html_body(service, "dummy_id")
+    print("\nHTML Body:\n", html_body[:200] + '...') if html_body else print("\nNo HTML content found.")

@@ -1,0 +1,21 @@
+From: html@example.com
+To: test@local.dev
+Subject: HTML Email
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============0960163690445641212=="
+
+--===============0960163690445641212==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+This is a fallback plain text.
+
+--===============0960163690445641212==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+<html><body><h1>This is HTML</h1><p>Paragraph text.</p></body></html>
+
+--===============0960163690445641212==--

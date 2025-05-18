@@ -60,7 +60,7 @@ class EmailApp:
             self.prompt.set_text("⚠ Theme name cannot be empty.")
             return
 
-        path = os.path.join("themes", f"{theme_name}.json")
+        path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "themes", f"{theme_name}.json"))
 
         # If the theme file already exists, confirm overwrite
         if os.path.exists(path):

@@ -1,0 +1,21 @@
+From: multi@example.com
+To: test@local.dev
+Subject: Multipart Email
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============8421782492641345994=="
+
+--===============8421782492641345994==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+This is the plain text version.
+
+--===============8421782492641345994==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+<html><body><p>This is the <b>HTML</b> version.</p></body></html>
+
+--===============8421782492641345994==--

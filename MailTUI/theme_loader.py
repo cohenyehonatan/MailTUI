@@ -24,13 +24,16 @@ def load_theme_palette(theme_name=DEFAULT_THEME):
     """
     Loads a theme by name and returns a urwid-compatible palette.
     """
-    theme_path = os.path.join(THEMES_DIR, f"{theme_name}.json")
+    theme_path = os.path.join(os.path.dirname(__file__), "themes", f"{theme_name}.json")
+    theme_path = os.path.abspath(theme_path)
 
     if not os.path.exists(theme_path):
         print(f"⚠ Theme '{theme_name}' not found. Falling back to default.")
-        theme_path = os.path.join(THEMES_DIR, f"{DEFAULT_THEME}.json")
+        theme_path = os.path.join(os.path.dirname(__file__), "themes", f"{DEFAULT_THEME}.json")
+        theme_path = os.path.abspath(theme_path)
 
     try:
+        print(f"[DEBUG] Loading theme from: {theme_path}")
         with open(theme_path, "r") as f:
             raw = json.load(f)
     except Exception as e:

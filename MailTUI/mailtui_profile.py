@@ -45,3 +45,22 @@ def save_profile(email, provider, token_file=None, imap=None, consent=True,
 def get_profile(email):
     data = load_profiles()
     return data['users'].get(email)
+
+def ensure_test_profile():
+    data = load_profiles()
+    test_email = "test@local.dev"
+    data['users'][test_email] = {
+        "provider": "local",
+        "token_file": None,
+        "imap": None,
+        "oauth_client": {"client_id": "test", "source": "test"},
+        "consent": {"accepted": True, "timestamp": datetime.now().isoformat()},
+        "settings": {"encryption_enabled": False},
+        "auth_metadata": {},
+        "setup_done": True,
+        "step": None,
+        "is_test": True
+    }
+    data['last_used'] = test_email
+    save_profiles(data)
+    return test_email

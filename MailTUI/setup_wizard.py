@@ -7,7 +7,7 @@ import json
 from client_detector import detect_mx_provider
 from auth import get_gmail_service, authenticate_imap_ui, KNOWN_PROVIDERS, retry_auth_factory
 from secure_store import decrypt_to_memory
-from mailtui_profile import save_profile
+from mailtui_profile import save_profile, load_profile
 
 STATE = {
     "email": "",
@@ -395,9 +395,12 @@ def main():
         show_provider_screen()
     else:
         show_email_entry()
+
     urwid.MainLoop(frame, palette=[('reversed', 'standout', '')]).run()
 
-    return STATE["email"] if STATE["email"] else None
+    if STATE.get("email"):
+        return load_profile(STATE["email"])
+    return None
 
 if __name__ == '__main__':
     main()

@@ -106,8 +106,24 @@ def main():
                 creds = authenticate(email, client_type=profile['provider'])  # or restore IMAP connection
         elif choice == 'new':
             import setup_wizard
-            setup_wizard.main()
-            return
+            new_profile = setup_wizard.main()
+            if new_profile:
+                email = new_profile["email"]
+                provider = new_profile["provider"]
+                token_file = new_profile.get("token_file")
+
+                if provider == 'gmail':
+                    creds = get_gmail_service(token_file)
+                else:
+                    creds = authenticate(email, client_type=provider)
+
+                client = get_email_client(email, creds, provider)
+                app = EmailApp(client)
+                app.run()
+                return
+            else:
+                print("⚠ Setup did not return a usable profile.")
+                return
     else:
         import setup_wizard
         setup_wizard.main()

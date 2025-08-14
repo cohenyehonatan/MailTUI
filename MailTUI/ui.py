@@ -8,6 +8,10 @@ import glob
 from mail_api import search_messages, get_message_headers, get_message_preview, save_eml, unescape_preview, get_html_body
 from theme_loader import get_available_themes, DEFAULT_THEME, load_theme_palette
 from secure_store import decrypt_to_memory
+from typing import Optional, Union, Tuple, Dict, List
+from urwid import ListBox
+
+UrwidKey = Union[str, Tuple[str, int, int, int]]
 
 def safe_str(text):
     return ''.join(
@@ -33,8 +37,58 @@ class SelectableText(urwid.Text):
         return key
 
 class EmailApp:
+    # ---- theme editor state ----
+    selected_fg: Optional[str] = None
+    selected_bg: Optional[str] = None
+    new_theme: Dict[str, List[Optional[str]]] = {}
+    theme_edit_index: int = 0
+    theme_name_edit: 'urwid.Edit'
+    prompt: 'urwid.Text'
+    next_button: 'urwid.Button'
+    cancel_button: 'urwid.Button'
+    theme_body: 'urwid.Pile'
+    theme_overlay: 'urwid.Overlay'
+
+    # ---- overlay/global state ----
+    overlay: Optional['urwid.Overlay'] = None
+    active_overlay: Optional[str] = None
+    preview_source: str = 'gmail'
+    showing_html: bool = False
+    current_msg_id: Optional[str] = None
+    preview_listbox: ListBox  # Explicitly annotate as a ListBox
 
     preview_source = 'gmail'  # or 'local'
+
+    def _sanitize_for_urwid(self, s: str) -> str:
+        """
+        Make text safer for urwid rendering:
+        - ensure str
+        - normalize newlines
+        - remove carriage returns
+        - replace problematic non-printables
+        """
+        if not isinstance(s, str):
+            try:
+                s = str(s)
+            except Exception:
+                s = repr(s)
+
+        # Normalize line endings
+        s = s.replace('\r\n', '\n').replace('\r', '')
+        # Best-effort strip control chars except \n and \t
+        # (urwid usually tolerates \t, but we can expand if needed)
+        return ''.join(ch if ch == '\n' or ch == '\t' or (0x20 <= ord(ch) <= 0x10FFFF and ch != '\u2028' and ch != '\u2029')
+                    else ' ' for ch in s)
+
+    def _text_line(self, line: str) -> urwid.Text:
+        # sanitize and give urwid freedom to wrap anywhere
+        return urwid.Text(self._sanitize_for_urwid(line), wrap='any')
+
+    def _chunk_long_line(self, line: str, max_len: int = 800) -> list[str]:
+        # Some headers (e.g., ARC-Seal b=) can get silly-long even with folding.
+        if len(line) <= max_len:
+            return [line]
+        return [line[i:i+max_len] for i in range(0, len(line), max_len)]
 
     def _write_and_apply_theme(self, theme_name, path):
         try:
@@ -54,6 +108,15 @@ class EmailApp:
 
         self.loop.widget = self.main_layout
 
+    def close_overlay(self, button=None):
+        # Return to main layout
+        self.loop.widget = self.main_layout
+        # Clear overlay state
+        self.overlay = None
+        self.active_overlay = None
+        # Restore the default unhandled_input
+        self.loop.unhandled_input = self.handle_input
+
     def save_custom_theme(self):
         theme_name = self.theme_name_edit.edit_text.strip()
         if not theme_name:
@@ -64,13 +127,24 @@ class EmailApp:
 
         # If the theme file already exists, confirm overwrite
         if os.path.exists(path):
-            def on_keypress(key):
+            def on_keypress(data: UrwidKey) -> Optional[bool]:
+                # Ignore mouse events
+                if isinstance(data, tuple):
+                    return None
+
+                key = data  # now definitely a str
+                if not isinstance(key, str):
+                    return None
+
                 if key.lower() == 'y':
                     self.loop.widget = self.main_layout
+                    self.loop.unhandled_input = self.handle_input  # restore your default handler
                     self._write_and_apply_theme(theme_name, path)
                 elif key.lower() == 'n':
                     self.prompt.set_text("ℹ Theme not saved.")
                     self.loop.widget = self.main_layout
+                    self.loop.unhandled_input = self.handle_input  # restore
+                return None  # explicit return to satisfy the signature
 
             confirm_prompt = urwid.Text(f"⚠ Theme '{theme_name}' already exists. Overwrite? (y/n)")
             self.loop.widget = urwid.Overlay(
@@ -124,8 +198,8 @@ class EmailApp:
         tag = THEME_TAGS[self.theme_edit_index]
         self.prompt.set_text(f"🎨 Editing tag: '{tag}'")
 
-        fg_widgets = [urwid.Text("Select foreground color:")]
-        bg_widgets = [urwid.Text("Select background color:")]
+        fg_widgets: List[urwid.Widget] = [urwid.Text("Select foreground color:")]
+        bg_widgets: List[urwid.Widget] = [urwid.Text("Select background color:")]
 
         def on_color_select(color, is_fg):
             if is_fg:
@@ -147,19 +221,23 @@ class EmailApp:
 
         fg_box = urwid.LineBox(urwid.ListBox(urwid.SimpleFocusListWalker(fg_widgets)))
         bg_box = urwid.LineBox(urwid.ListBox(urwid.SimpleFocusListWalker(bg_widgets)))
-
         prompt_line = urwid.AttrMap(
             urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.prompt), height=1)),
             'header'
         )
+        name_line  = urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.theme_name_edit), height=1))
+        next_line  = urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.next_button), height=1))
+        cancel_line= urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.cancel_button), height=1))
+        columns    = urwid.Columns([fg_box, bg_box])
 
-        columns = urwid.Columns([fg_box, bg_box])
-        self.theme_body.contents = [
-            (prompt_line, self.theme_body.options()),
-            (columns, self.theme_body.options()),
-            (urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.theme_name_edit), height=1)), self.theme_body.options()),
-            (urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.next_button), height=1)), self.theme_body.options()),
-            (urwid.LineBox(urwid.BoxAdapter(urwid.Filler(self.cancel_button), height=1)), self.theme_body.options()),        ]
+        # Rebuild the pile instead of assigning to .contents
+        self.theme_body = urwid.Pile([
+            ('pack', prompt_line),
+            ('weight', 1, columns),
+            ('pack', name_line),
+            ('pack', next_line),
+            ('pack', cancel_line),
+        ])
 
         self.theme_overlay = urwid.Overlay(
             urwid.LineBox(self.theme_body),
@@ -168,6 +246,9 @@ class EmailApp:
             valign='middle', height=('relative', 80)
         )
         self.loop.widget = self.theme_overlay
+        self.overlay = self.theme_overlay
+        self.active_overlay = 'theme'
+
 
 
 
@@ -337,6 +418,8 @@ class EmailApp:
             urwid.Text("🔧  f            → Show filter overlay"),
             urwid.Text("🌐  h            → Toggle raw/plaintext ↔ HTML"),
             urwid.Text("❓  Shift+H      → Show this help menu"),
+            urwid.Text("📜  e            → Show full email headers"),
+            urwid.Text("🧾  Shift+E      → Show raw MIME source"),
             urwid.Text("🚪  esc / q      → Quit or close overlay"),
             urwid.Divider(),
             urwid.Text("Press the escape or q keys to close this help.")
@@ -366,7 +449,12 @@ class EmailApp:
             valign='middle', height=('relative', 20)
         )
 
-        def handle_yes_no(key):
+        def handle_yes_no(data: UrwidKey) -> Optional[bool]:
+            # Ignore mouse events
+            if isinstance(data, tuple):
+                return None
+
+            key: str = data  # now it's definitely a str
             if key.lower() == 'y':
                 self.loop.widget = self.main_layout
                 self.loop.unhandled_input = self.handle_input
@@ -375,12 +463,19 @@ class EmailApp:
                 self.loop.widget = self.main_layout
                 self.loop.unhandled_input = self.handle_input
                 callback(False)
+            return None  # explicit return to satisfy the signature
 
         self.loop.widget = self.encrypt_prompt_overlay
         self.loop.unhandled_input = handle_yes_no
 
 
-    def handle_input(self, key):
+    def handle_input(self, data: UrwidKey) -> Optional[bool]:
+        # Ignore mouse events
+        if isinstance(data, tuple):
+            return None
+
+        key: str = data  # now it's definitely a str
+
         if key == 'enter':
             query = self.query_edit.edit_text.strip()
             self.perform_search(query)
@@ -405,13 +500,18 @@ class EmailApp:
                     with open(filename, 'w', encoding='utf-8') as f:
                         for w in self.preview_lines:
                             if isinstance(w, urwid.Text):
-                                f.write(w.text + '\n')
+                                txt, _ = w.get_text()  # Get the text from the urwid.Text widget
+                                if not isinstance(txt, str):  # Ensure txt is a string
+                                    txt = str(txt, 'utf-8') if isinstance(txt, (bytes, bytearray, memoryview)) else str(txt)
+                                f.write(txt + "\n")  # Concatenate with "\n" and write to file
                     self.preview_lines.clear()
                     self.preview_lines.append(urwid.Text(f"✅ Decrypted email saved as: {filename}"))
                 except Exception as e:
                     self.preview_lines.clear()
                     self.preview_lines.append(urwid.Text(f"❌ Failed to save: {e}"))
                 return
+
+
 
             # Case 2: Invalid preview — can't save
             if self.preview_source != 'gmail' or not self.current_msg_id:
@@ -424,7 +524,13 @@ class EmailApp:
 
             def do_save(encrypt_eml):
                 try:
-                    save_eml(self.service.service, self.current_msg_id, filename, encrypt=encrypt_eml)
+                    self.service.download_eml(self.current_msg_id, filename)
+                    if encrypt_eml:
+                        from secure_store import encrypt_file
+                        enc_path = filename if filename.endswith(".enc") else (filename + ".enc")
+                        encrypt_file(filename, enc_path)
+                        import os
+                        os.remove(filename)
                     self.preview_lines.clear()
                     self.preview_lines.append(
                         urwid.Text(f"✅ Saved as: {filename}{'.enc' if encrypt_eml else ''}")
@@ -451,6 +557,7 @@ class EmailApp:
             self.show_filter_overlay()
         elif key == 'right' and self.overlay:
             focus_widget, _ = self.filter_listbox.get_focus()
+
             if isinstance(focus_widget, urwid.AttrMap):
                 text_widget = focus_widget.original_widget
             elif isinstance(focus_widget, urwid.Text):
@@ -458,40 +565,50 @@ class EmailApp:
             else:
                 return  # not valid
 
-            filter_term = text_widget.text.strip()
+            # 👇 guarantee a str
+            txt, _ = text_widget.get_text()
+            filter_term = txt.strip()
+
+            # Ensure filter_term is a string
+            if isinstance(filter_term, bytes):
+                filter_term = filter_term.decode('utf-8')  # Decode bytes to str
+            elif not isinstance(filter_term, str):
+                filter_term = str(filter_term)  # Convert other types to str
+
             if filter_term and ':' in filter_term:
                 self.query_edit.edit_text += f" {filter_term}"
             if filter_term.startswith("Select filter"):
                 return
             self.loop.widget = self.main_layout
             self.overlay = None
+
         elif self.overlay and key in ('esc', 'left', 'q', 'enter'):
-            self.loop.widget = self.main_layout
-            self.overlay = None
-            self.active_overlay = None
+            self.close_overlay()
         elif key == 'h' and self.current_msg_id is not None:
             focus_index = self.preview_listbox.get_focus()[1]
 
             if self.showing_html:
-                preview = get_message_preview(self.service.service, self.current_msg_id)
+                preview = self.service.fetch_preview(self.current_msg_id)
                 self.preview_lines.clear()
-                for line in preview.splitlines():
-                    self.preview_lines.append(urwid.Text(line))
+                if preview is None:
+                    self.preview_lines.append(urwid.Text("[No preview content found]"))
+                else:
+                    for line in preview.splitlines():
+                        self.preview_lines.append(urwid.Text(line))
                 self.showing_html = False
             else:
-                html = get_html_body(self.service.service, self.current_msg_id)
+                html = self.service.fetch_html(self.current_msg_id)
+                self.preview_lines.clear()
                 if not html:
-                    self.preview_lines.clear()
                     self.preview_lines.append(urwid.Text("[No HTML content found]"))
                 else:
                     rendered = self.render_html(html)
-                    self.preview_lines.clear()
                     for line in rendered.splitlines():
                         self.preview_lines.append(urwid.Text(line))
                     self.showing_html = True
 
             # Re-apply scroll position
-            if focus_index < len(self.preview_lines):
+            if focus_index is not None and focus_index < len(self.preview_lines):
                 self.preview_listbox.set_focus(focus_index)
         elif key == 'H':
             self.overlay = urwid.Overlay(
@@ -514,6 +631,70 @@ class EmailApp:
             self.build_theme_overlay()
         elif key == 'o':  # Open encrypted .eml.enc
             self.show_encrypted_file_picker()
+        elif key == 'e' and self.current_msg_id is not None:
+            try:
+                if hasattr(self.service, "fetch_all_headers_text"):
+                    header_text = self.service.fetch_all_headers_text(self.current_msg_id)
+                else:
+                    # Fallback: parse visible preview until first blank line
+                    collected = []
+                    for w in self.preview_lines:
+                        if isinstance(w, urwid.Text):
+                            t, _ = w.get_text()
+                            if t.strip() == "":
+                                break
+                            collected.append(t)
+                    header_text = "\n".join(collected)
+
+                header_text = self._sanitize_for_urwid(header_text)
+
+                items = [urwid.Text("Email Headers (esc/q to close)"), urwid.Divider()]
+                for raw_line in header_text.split('\n'):
+                    for piece in self._chunk_long_line(raw_line):
+                        items.append(self._text_line(piece))
+
+                listbox = urwid.ListBox(urwid.SimpleFocusListWalker(items))
+                self.overlay = urwid.Overlay(
+                    urwid.LineBox(listbox, title="Email Headers"),
+                    self.main_layout,
+                    align='center', width=('relative', 85),
+                    valign='middle', height=('relative', 85)
+                )
+                self.loop.widget = self.overlay
+                self.active_overlay = 'headers'
+            except Exception as e:
+                self.preview_lines.clear()
+                self.preview_lines.append(urwid.Text(f"Failed to load headers: {e}"))
+
+        elif key == 'E' and self.current_msg_id is not None:
+            try:
+                if hasattr(self.service, "fetch_raw_source"):
+                    raw_src = self.service.fetch_raw_source(self.current_msg_id)
+                else:
+                    raw_src = "\n".join(
+                        str(w.get_text()[0]) if isinstance(w, urwid.Text) else ""
+                        for w in self.preview_lines
+                    )
+
+                raw_src = self._sanitize_for_urwid(raw_src)
+
+                items = [urwid.Text("Raw MIME Source (esc/q to close)"), urwid.Divider()]
+                for raw_line in raw_src.split('\n'):
+                    for piece in self._chunk_long_line(raw_line):
+                        items.append(self._text_line(piece))
+
+                listbox = urwid.ListBox(urwid.SimpleFocusListWalker(items))
+                self.overlay = urwid.Overlay(
+                    urwid.LineBox(listbox, title="Raw Source"),
+                    self.main_layout,
+                    align='center', width=('relative', 90),
+                    valign='middle', height=('relative', 90)
+                )
+                self.loop.widget = self.overlay
+                self.active_overlay = 'raw'
+            except Exception as e:
+                self.preview_lines.clear()
+                self.preview_lines.append(urwid.Text(f"Failed to load raw source: {e}"))
 
     def perform_search(self, query=None, page_token=None):
         self.email_list.clear()
@@ -532,7 +713,7 @@ class EmailApp:
             return
 
         for i, msg in enumerate(self.messages):
-            headers = get_message_headers(self.service.service, msg['id'])
+            headers = self.service.fetch_headers(msg['id'])
             subject = headers.get("Subject", "[No Subject]")
             sender = headers.get("From", "[No From]")
             date = headers.get("Date", "[No Date]")
@@ -550,7 +731,7 @@ class EmailApp:
         try:
             self.current_msg_id = msg_id
             self.preview_source = 'gmail'
-            preview = get_message_preview(self.service.service, msg_id)
+            preview = self.service.fetch_preview(msg_id)
             if not preview:
                 preview = "[No preview available]"
             preview = unescape_preview(preview)
@@ -560,7 +741,10 @@ class EmailApp:
             self.preview_lines.clear()
             for line in lines:
                 self.preview_lines.append(urwid.Text(line))
-            self.preview_listbox.base_widget.set_focus(0)
+            if isinstance(self.preview_listbox, ListBox):
+                self.preview_listbox.set_focus(0)
+            else:
+                raise TypeError("Expected preview_listbox to be a ListBox")
         except Exception as e:
             self.preview_lines.clear()
             self.preview_lines.append(urwid.Text(f"Error loading preview: {e}"))
@@ -581,7 +765,10 @@ class EmailApp:
                 self.preview_lines.append(urwid.Text(f"📄 Previewing decrypted: {filename}"))
                 for line in decrypted.splitlines():
                     self.preview_lines.append(urwid.Text(line))
-                self.preview_listbox.base_widget.set_focus(0)
+                if isinstance(self.preview_listbox, ListBox):
+                    self.preview_listbox.set_focus(0)
+                else:
+                    raise TypeError("Expected preview_listbox to be a ListBox")
                 self.loop.widget = self.main_layout
                 self.overlay = None
                 self.active_overlay = None
@@ -633,7 +820,7 @@ class EmailApp:
         self.loop.widget = overlay
         self.active_overlay = 'decrypt'
 
-    def open_encrypted_eml(self):
+    def open_encrypted_eml(self, filepath):
         from tkinter import filedialog, Tk
         from secure_store import decrypt_to_memory
 
@@ -660,10 +847,11 @@ class EmailApp:
             for line in decrypted.splitlines():
                 self.preview_lines.append(urwid.Text(line))
 
-            self.preview_listbox.base_widget.set_focus(0)
+            if isinstance(self.preview_listbox, ListBox):
+                self.preview_listbox.set_focus(0)
+            else:
+                raise TypeError("Expected preview_listbox to be a ListBox")
             self.preview_lines.append(urwid.Text("📄 Decrypted local .eml file previewed. Press 'b' to clear."))
         except Exception as e:
             self.preview_lines.clear()
             self.preview_lines.append(urwid.Text(f"❌ Failed to open file: {e}"))
-
-

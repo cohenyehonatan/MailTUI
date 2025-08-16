@@ -1,0 +1,25 @@
+{
+  "users": {
+    "test@local.dev": {
+      "provider": "local",
+      "token_file": null,
+      "imap": null,
+      "oauth_client": {
+        "client_id": "test",
+        "source": "test"
+      },
+      "consent": {
+        "accepted": true,
+        "timestamp": "2025-08-14T18:53:44.583162"
+      },
+      "settings": {
+        "encryption_enabled": false
+      },
+      "auth_metadata": {},
+      "setup_done": true,
+      "step": null,
+      "is_test": true
+    }
+  },
+  "last_used": "test@local.dev"
+}

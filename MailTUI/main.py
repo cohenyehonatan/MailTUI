@@ -94,30 +94,38 @@ def handle_reset_password(profiles) -> None:
     # 2) Dry-run: verify we can decrypt everything with old_pw
     print("🔍 Dry-run: verifying current password against all targets...")
     probe_errs = []
-    from secure_store import decrypt_to_memory
+    from secure_store import decrypt_to_memory, _verify_v1_file, _verify_v0_file
     try:
         from secure_store import DeferPassword  # optional if you've defined it
     except Exception:
         DeferPassword = type("DeferPassword", (Exception,), {})
 
+    probe_errs = []
     for p in targets:
         try:
-            # Preferred path: modern API that accepts password=
+            # Preferred: modern API that accepts password=
             _ = decrypt_to_memory(p, prompt_password=False, password=old_pw)
+            # if it returns, password is correct for that file
         except DeferPassword:
-            # Fallback for legacy behavior where decrypt_to_memory refuses passwordless calls
+            # decrypt_to_memory refused to run passwordless or format not handled; do manual verify
             try:
-                from secure_store import _get_or_create_salt, _derive_key
-                from cryptography.fernet import Fernet
-                with open(p, "rb") as f:
-                    ciphertext = f.read()
-                salt = _get_or_create_salt()
-                key = _derive_key(old_pw.encode('utf-8'), salt)
-                Fernet(key).decrypt(ciphertext)  # raises if wrong
-            except Exception as e2:
-                probe_errs.append((p, str(e2)))
+                _verify_v1_file(p, old_pw)
+            except DeferPassword:
+                # not v1; try v0
+                _verify_v0_file(p, old_pw)
+            except Exception as e:
+                probe_errs.append((p, str(e)))
         except Exception as e:
-            probe_errs.append((p, str(e)))
+            # decrypt_to_memory raised — try manual v1/v0 as a fallback too
+            try:
+                _verify_v1_file(p, old_pw)
+            except DeferPassword:
+                try:
+                    _verify_v0_file(p, old_pw)
+                except Exception as e2:
+                    probe_errs.append((p, str(e2)))
+            except Exception as e1:
+                probe_errs.append((p, str(e1)))
 
     if probe_errs:
         print("❌ Dry-run failed; nothing changed.")

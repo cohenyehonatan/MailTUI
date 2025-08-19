@@ -164,24 +164,25 @@ def show_google_oauth_setup_guide(button=None, step=1):
 
 def check_for_credentials(button=None):
     from secure_store import CLIENT_SECRET_FILE, decrypt_to_memory
-    ENCRYPTED_CLIENT_SECRET = f"{CLIENT_SECRET_FILE}.enc" if isinstance(CLIENT_SECRET_FILE, str) else None
-    if ENCRYPTED_CLIENT_SECRET and os.path.exists(ENCRYPTED_CLIENT_SECRET):
+    enc = f"{CLIENT_SECRET_FILE}.enc" if isinstance(CLIENT_SECRET_FILE, str) else None
+
+    if enc and os.path.exists(enc):
         try:
-            plaintext = decrypt_to_memory(ENCRYPTED_CLIENT_SECRET)
-            token_data = json.loads(plaintext)
+            plaintext = decrypt_to_memory(enc)            # bytes
+            token_data = json.loads(plaintext.decode())   # decode!
             get_gmail_service()
             return
         except Exception as e:
-            print(f"❌ Failed to decrypt: {e}")
-    
-    elif isinstance(CLIENT_SECRET_FILE, str) and os.path.exists(CLIENT_SECRET_FILE):
+            print(f"❌ Failed to decrypt client secret: {e}")
+
+    if isinstance(CLIENT_SECRET_FILE, str) and os.path.exists(CLIENT_SECRET_FILE):
         try:
-            with open(CLIENT_SECRET_FILE) as f:
+            with open(CLIENT_SECRET_FILE, "r", encoding="utf-8") as f:
                 token_data = json.load(f)
             get_gmail_service()
             return
         except Exception as e:
-            print(f"❌ Failed to load JSON: {e}")
+            print(f"❌ Failed to load client secret JSON: {e}")
 
     # Only reach this if both branches failed
     STATE["step"] = "google_oauth_guide"
@@ -443,62 +444,41 @@ def show_gmail_setup(creds=None):
         if not creds or not creds.valid:
             raise Exception("No valid Gmail credentials passed to setup. Restart OAuth.")
 
-        from mailtui_profile import save_profile
-        from secure_store import get_token_path, encrypt_bytes_to_file
+        from tempfile import NamedTemporaryFile
+        from secure_store import get_token_encrypted_path, encrypt_bytes_to_file, _get_password
 
-        # Optional: mark a mid-stage before writing anything
-        STATE["step"] = "oauth_complete"
+        enc_path = get_token_encrypted_path(email)
 
-        token_file = get_token_path()
+        # dump creds to a temp file only
+        with NamedTemporaryFile("wb", delete=False) as tmp:
+            pickle.dump(creds, tmp)
+            tmp_path = tmp.name
 
-        # 1) Save plaintext token (temporary)
-        with open(token_file, 'wb') as f:
-            pickle.dump(creds, f)
-
-        with open(token_file, "rb") as f:
+        with open(tmp_path, "rb") as f:
             plaintext = f.read()
 
-        from secure_store import _get_password, encrypt_bytes_to_file
         password = _get_password(always_confirm=True).decode("utf-8")
 
-        with open(token_file, "rb") as f:
-            plaintext = f.read()
-
-        # 2) Save initial profile BEFORE encrypting (so we have a record)
-        save_profile(
-            email=email,
-            provider='gmail',
-            token_file=token_file,
-            consent=True,
-            client_id=STATE.get("client_id"),
-            encryption_enabled=bool(STATE.get("encrypt_eml", False)),
-            setup_done=False,            # not done yet
-            step=STATE["step"]
-        )
-
-        # 3) write v1 (embedded salt + explicit iterations)
-        encrypted_path = token_file + ".enc"
+        # write v1: embedded salt + iterations
         encrypt_bytes_to_file(
-            plaintext, encrypted_path,
+            plaintext, enc_path,
             password=password, iterations=300_000, embed_salt=True
         )
 
-        # 4) Save final profile
+        os.remove(tmp_path)
+
+        # 2) Save final profile
         STATE["step"] = "done"
         save_profile(
             email=email,
             provider='gmail',
-            token_file=encrypted_path,
+            token_file=enc_path,
             consent=True,
             client_id=STATE.get("client_id"),
             encryption_enabled=bool(STATE.get("encrypt_eml", False)),
             setup_done=True,
             step=STATE["step"]
         )
-
-        # 5) Cleanup plaintext
-        if os.path.exists(token_file):
-            os.remove(token_file)
 
         update_body(urwid.Filler(urwid.Pile([
             urwid.Text("✅ Gmail authentication successful.", align='center'),

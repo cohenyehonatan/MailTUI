@@ -10,7 +10,7 @@
       },
       "consent": {
         "accepted": true,
-        "timestamp": "2025-08-14T18:53:44.583162"
+        "timestamp": "2025-08-18T21:25:23.618137"
       },
       "settings": {
         "encryption_enabled": false
@@ -19,6 +19,25 @@
       "setup_done": true,
       "step": null,
       "is_test": true
+    },
+    "tucico13@gmail.com": {
+      "provider": "gmail",
+      "token_file": "/Users/jonathancohen/MailTUI/MailTUI/../credentials/client_secret_935818634292-n1k78gi5loplckisa83fim8uv6dch8sa.apps.googleusercontent.com.token.pickle.enc",
+      "imap": null,
+      "oauth_client": {
+        "client_id": "default",
+        "source": "default"
+      },
+      "consent": {
+        "accepted": true,
+        "timestamp": "2025-08-18T21:22:28.455959"
+      },
+      "settings": {
+        "encryption_enabled": false
+      },
+      "auth_metadata": {},
+      "setup_done": true,
+      "step": "done"
     }
   },
   "last_used": "test@local.dev"
